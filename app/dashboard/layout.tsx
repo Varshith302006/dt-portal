@@ -35,6 +35,8 @@ import {
 
 import { ThemeToggle } from "@/components/theme-toggle";
 
+import { supabase } from "@/lib/supabase";
+
 export default function Layout({
   children,
 }: {
@@ -50,16 +52,70 @@ export default function Layout({
   const [openMenu, setOpenMenu] =
     useState(false);
 
+  const [
+    hasActiveExam,
+    setHasActiveExam,
+  ] = useState(false);
+
   useEffect(() => {
 
     const stored =
       localStorage.getItem("student");
 
     if (stored) {
-      setStudent(JSON.parse(stored));
+
+      const parsed =
+        JSON.parse(stored);
+
+      setStudent(parsed);
+
+      checkActiveExam(parsed);
+
     }
 
   }, []);
+
+  const checkActiveExam =
+    async (
+      user: any
+    ) => {
+
+      const now =
+        new Date()
+          .toISOString();
+
+      const {
+        data,
+      } = await supabase
+        .from(
+          "conduct_exam"
+        )
+        .select(
+          "exam_id"
+        )
+        .eq(
+          "sem_id",
+          user.sem_id
+        )
+        .eq(
+          "branch_id",
+          user.branch_id
+        )
+        .lte(
+          "start_time",
+          now
+        )
+        .gte(
+          "end_time",
+          now
+        )
+        .limit(1);
+
+      setHasActiveExam(
+        !!data?.length
+      );
+
+    };
 
   const menuItems = [
     {
@@ -67,11 +123,25 @@ export default function Layout({
       href: "/dashboard",
       icon: LayoutDashboard,
     },
-    {
-      title: "Flashcards",
-      href: "/dashboard/flashcards",
-      icon: BookOpen,
-    },
+
+    /* HIDE FLASHCARDS
+       DURING ACTIVE EXAM */
+
+    ...(!hasActiveExam
+      ? [
+        {
+          title:
+            "Flashcards",
+
+          href:
+            "/dashboard/flashcards",
+
+          icon:
+            BookOpen,
+        },
+      ]
+      : []),
+
     {
       title: "Analysis",
       href: "/dashboard/analysis",
@@ -297,7 +367,7 @@ export default function Layout({
                   text-muted-foreground
                   group-hover:text-white
                 "
-                            />
+              />
 
             </button>
 

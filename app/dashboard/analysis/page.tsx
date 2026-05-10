@@ -47,49 +47,155 @@ export default function AnalysisPage() {
     user: any
   ) => {
 
-    // RESULTS
-    const { data: resultData } =
-      await supabase
-        .from("exam_results")
-        .select(`
-          *,
-          conduct_exam (
-            exam_name,
-            start_time,
-            end_time
-          )
-        `)
-        .eq("st_id", user.st_id)
-        .order("submitted_at", {
-          ascending: false,
-        });
+    const now =
+      new Date()
+        .toISOString();
 
-    setResults(resultData || []);
+    /* -------------------------------- */
+    /* GET RESULTS */
+    /* -------------------------------- */
 
-    // ALL EXAMS
-    const { data: examsData } =
-      await supabase
-        .from("conduct_exam")
-        .select("*")
-        .eq("sem_id", user.sem_id)
-        .eq("branch_id", user.branch_id);
+    const {
+      data: resultData,
+    } = await supabase
+      .from(
+        "exam_results"
+      )
+      .select(`
+      *,
+      conduct_exam (
+        exam_id,
+        exam_name,
+        start_time,
+        end_time
+      )
+    `)
+      .eq(
+        "st_id",
+        user.st_id
+      )
+      .order(
+        "submitted_at",
+        {
+          ascending:
+            false,
+        }
+      );
 
-    // SUBMITTED EXAMS
+    /* -------------------------------- */
+    /* GET ALL EXAMS */
+    /* -------------------------------- */
+
+    const {
+      data: examsData,
+    } = await supabase
+      .from(
+        "conduct_exam"
+      )
+      .select("*")
+      .eq(
+        "sem_id",
+        user.sem_id
+      )
+      .eq(
+        "branch_id",
+        user.branch_id
+      );
+
     const submittedIds =
-      (resultData || []).map(
-        (r: any) => r.exam_id
+      (
+        resultData || []
+      ).map(
+        (
+          r: any
+        ) => r.exam_id
       );
 
-    // FILTER PENDING
+    /* -------------------------------- */
+    /* RECENT RESULTS */
+    /*
+       SHOW IF:
+       1. EXAM SUBMITTED
+       2. OR EXAM TIME COMPLETED
+    */
+    /* -------------------------------- */
+
+    const filteredResults =
+      (
+        resultData || []
+      ).filter(
+        (
+          r: any
+        ) => {
+
+          const examEnd =
+            new Date(
+              new Date(
+                r
+                  .conduct_exam
+                  ?.end_time
+              ).getTime() +
+              (5.5 * 60 * 60 * 1000)
+            );
+
+          return (
+            submittedIds.includes(
+              r.exam_id
+            ) ||
+            examEnd <=
+            new Date(
+              now
+            )
+          );
+
+        }
+      );
+
+    setResults(
+      filteredResults
+    );
+
+    /* -------------------------------- */
+    /* PENDING EXAMS */
+    /*
+       SHOW ONLY IF:
+       1. TIME COMPLETED
+       2. NOT SUBMITTED
+    */
+    /* -------------------------------- */
+
     const pending =
-      (examsData || []).filter(
-        (exam: any) =>
-          !submittedIds.includes(
-            exam.exam_id
-          )
+      (
+        examsData || []
+      ).filter(
+        (
+          exam: any
+        ) => {
+
+          const examEnd =
+            new Date(
+              new Date(
+                exam.end_time
+              ).getTime() +
+              (5.5 * 60 * 60 * 1000)
+            );
+
+          return (
+            examEnd <=
+            new Date(
+              now
+            ) &&
+            !submittedIds.includes(
+              exam.exam_id
+            )
+          );
+
+        }
       );
 
-    setPendingExams(pending);
+    setPendingExams(
+      pending
+    );
 
   };
 
