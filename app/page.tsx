@@ -140,6 +140,65 @@ export default function LoginPage() {
       )
     );
 
+    /* STORE LOGIN LOG */
+
+    const {
+      data: branchData,
+    } = await supabase
+      .from(
+        "branches"
+      )
+      .select(
+        "label"
+      )
+      .eq(
+        "id",
+        studentData.branch_id
+      )
+      .single();
+
+    await supabase
+      .from(
+        "login_logs"
+      )
+      .insert([
+        {
+          st_id:
+            studentData.st_id,
+
+          st_name:
+            studentData.st_name,
+
+          semester:
+            `Semester ${studentData.sem_id}`,
+
+          branch:
+            branchData
+              ?.label || "",
+
+          login_time:
+            new Date(
+              Date.now() +
+              (5.5 * 60 * 60 * 1000)
+            ).toISOString(),
+
+          device:
+            /Mobi|Android/i.test(
+              navigator.userAgent
+            )
+
+              ? "Mobile"
+
+              : "Desktop",
+
+          browser:
+            navigator.userAgent,
+
+          ip_address:
+            "",
+        },
+      ]);
+
     const now =
       new Date().toISOString();
 

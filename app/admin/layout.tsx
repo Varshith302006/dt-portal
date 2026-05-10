@@ -20,6 +20,7 @@ import {
   LogOut,
   Moon,
   Sun,
+  Activity,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -183,6 +184,17 @@ export default function AdminLayout({
       href:
         "/admin/admin-management",
       icon: Shield,
+    },
+
+    {
+      name:
+        "Login Logs",
+
+      href:
+        "/admin/login-logs",
+
+      icon:
+        Activity,
     },
 
   ];
