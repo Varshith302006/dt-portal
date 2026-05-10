@@ -1,21 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
-import { useRouter } from "next/navigation";
-
-import Link from "next/link";
+import {
+  useEffect,
+  useState,
+} from "react";
 
 import {
-  LayoutDashboard,
-  ClipboardList,
-  Upload,
-  KeyRound,
-  BarChart3,
   Users,
-  Shield,
-  LogOut,
-  Menu,
+  ClipboardList,
+  BarChart3,
+  BookOpen,
 } from "lucide-react";
 
 import {
@@ -23,16 +17,9 @@ import {
   CardContent,
 } from "@/components/ui/card";
 
-import { Button } from "@/components/ui/button";
-
 import { supabase } from "@/lib/supabase";
 
 export default function AdminDashboardPage() {
-
-  const router = useRouter();
-
-  const [admin, setAdmin] =
-    useState<any>(null);
 
   const [stats, setStats] =
     useState({
@@ -47,30 +34,14 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
 
-    const storedAdmin =
-      localStorage.getItem(
-        "admin"
-      );
-
-    if (!storedAdmin) {
-
-      router.push("/");
-
-      return;
-
-    }
-
-    const parsed =
-      JSON.parse(storedAdmin);
-
-    setAdmin(parsed);
-
     fetchDashboardData();
 
   }, []);
 
   const fetchDashboardData =
     async () => {
+
+      /* STUDENTS */
 
       const {
         count: studentsCount,
@@ -81,6 +52,8 @@ export default function AdminDashboardPage() {
           head: true,
         });
 
+      /* SUBJECTS */
+
       const {
         count: subjectsCount,
       } = await supabase
@@ -89,6 +62,8 @@ export default function AdminDashboardPage() {
           count: "exact",
           head: true,
         });
+
+      /* EXAMS */
 
       const {
         count: examsCount,
@@ -99,6 +74,8 @@ export default function AdminDashboardPage() {
           head: true,
         });
 
+      /* RESULTS */
+
       const {
         count: resultsCount,
       } = await supabase
@@ -107,6 +84,8 @@ export default function AdminDashboardPage() {
           count: "exact",
           head: true,
         });
+
+      /* RECENT EXAMS */
 
       const {
         data: exams,
@@ -146,356 +125,323 @@ export default function AdminDashboardPage() {
 
     };
 
-  const handleLogout = () => {
-
-    localStorage.removeItem(
-      "admin"
-    );
-
-    router.push("/");
-
-  };
-
   return (
 
     <div className="
-      min-h-screen
-      bg-background
-      text-foreground
-      flex
+      space-y-8
     ">
 
-      {/* SIDEBAR */}
+      {/* HEADER */}
 
-      <aside className="
-        w-72
-        border-r
-        border-border
-        bg-card
-        flex
-        flex-col
+      <div>
+
+        <h1 className="
+          text-4xl
+          font-bold
+          tracking-tight
+        ">
+
+          Dashboard
+
+        </h1>
+
+        <p className="
+          text-muted-foreground
+          mt-2
+        ">
+
+          Overview of exams,
+          students and results.
+
+        </p>
+
+      </div>
+
+      {/* STATS */}
+
+      <div className="
+        grid
+        gap-6
+        md:grid-cols-2
+        xl:grid-cols-4
       ">
 
-        {/* LOGO */}
+        {/* STUDENTS */}
 
-        <div className="
-          h-20
-          px-6
-          border-b
-          border-border
-          flex
-          items-center
-          gap-4
+        <Card className="
+          rounded-2xl
+          border-border/60
         ">
 
-          <div className="
-            w-12
-            h-12
-            rounded-2xl
-            bg-gradient-to-br
-            from-indigo-500
-            to-violet-600
-            flex
-            items-center
-            justify-center
-            text-white
+          <CardContent className="
+            p-6
           ">
 
-            <Shield size={24} />
-
-          </div>
-
-          <div>
-
-            <h1 className="
-              text-xl
-              font-bold
-              tracking-tight
+            <div className="
+              flex
+              items-center
+              justify-between
             ">
 
-              Admin Panel
+              <div>
 
-            </h1>
+                <p className="
+                  text-sm
+                  text-muted-foreground
+                ">
 
-            <p className="
-              text-xs
-              text-muted-foreground
-              mt-1
-            ">
+                  Students
 
-              DT Management
+                </p>
 
-            </p>
+                <h2 className="
+                  text-3xl
+                  font-bold
+                  mt-2
+                ">
 
-          </div>
+                  {
+                    stats.students
+                  }
 
-        </div>
+                </h2>
 
-        {/* NAVIGATION */}
+              </div>
 
-        <div className="
-          flex-1
-          p-4
-          space-y-2
-        ">
-
-          {/* DASHBOARD */}
-
-          <Link
-            href="/admin/dashboard"
-            className="
-              h-12
-              px-4
-              rounded-xl
-              flex
-              items-center
-              gap-3
-              bg-indigo-500
-              text-white
-              font-medium
-            "
-          >
-
-            <LayoutDashboard size={20} />
-
-            Dashboard
-
-          </Link>
-
-          {/* CREATE EXAM */}
-
-          <Link
-            href="/admin/dashboard/create-exam"
-            className="
-              h-12
-              px-4
-              rounded-xl
-              flex
-              items-center
-              gap-3
-              hover:bg-muted
-              transition-all
-              font-medium
-            "
-          >
-
-            <ClipboardList size={20} />
-
-            Create Exams
-
-          </Link>
-
-          {/* UPLOAD QUESTIONS */}
-
-          <Link
-            href="/admin/dashboard/UploadQuestions"
-            className="
-              h-12
-              px-4
-              rounded-xl
-              flex
-              items-center
-              gap-3
-              hover:bg-muted
-              transition-all
-              font-medium
-            "
-          >
-
-            <Upload size={20} />
-
-            Upload Questions
-
-          </Link>
-
-          {/* EXAM KEYS */}
-
-          <Link
-            href="/admin/dashboard/exam-keys"
-            className="
-              h-12
-              px-4
-              rounded-xl
-              flex
-              items-center
-              gap-3
-              hover:bg-muted
-              transition-all
-              font-medium
-            "
-          >
-
-            <KeyRound size={20} />
-
-            Exam Keys
-
-          </Link>
-
-          {/* EXAM RESULTS */}
-
-          <Link
-            href="/admin/dashboard/exam-results"
-            className="
-              h-12
-              px-4
-              rounded-xl
-              flex
-              items-center
-              gap-3
-              hover:bg-muted
-              transition-all
-              font-medium
-            "
-          >
-
-            <BarChart3 size={20} />
-
-            Exam Results
-
-          </Link>
-
-          {/* STUDENTS */}
-
-          <Link
-            href="/admin/dashboard/students"
-            className="
-              h-12
-              px-4
-              rounded-xl
-              flex
-              items-center
-              gap-3
-              hover:bg-muted
-              transition-all
-              font-medium
-            "
-          >
-
-            <Users size={20} />
-
-            Student Management
-
-          </Link>
-
-          {/* ADMINS */}
-
-          <Link
-            href="/admin/dashboard/admin-management"
-            className="
-              h-12
-              px-4
-              rounded-xl
-              flex
-              items-center
-              gap-3
-              hover:bg-muted
-              transition-all
-              font-medium
-            "
-          >
-
-            <Shield size={20} />
-
-            Admin Management
-
-          </Link>
-
-        </div>
-
-        {/* FOOTER */}
-
-        <div className="
-          p-4
-          border-t
-          border-border
-        ">
-
-          <div className="
-            rounded-2xl
-            border
-            border-border
-            p-4
-            flex
-            items-center
-            justify-between
-          ">
-
-            <div>
-
-              <h3 className="
-                font-semibold
-                text-sm
+              <div className="
+                w-12
+                h-12
+                rounded-xl
+                bg-indigo-500/10
+                text-indigo-500
+                flex
+                items-center
+                justify-center
               ">
 
-                {
-                  admin?.ad_name
-                }
+                <Users size={22} />
 
-              </h3>
-
-              <p className="
-                text-xs
-                text-muted-foreground
-                mt-1
-              ">
-
-                Administrator
-
-              </p>
+              </div>
 
             </div>
 
-            <Button
-              onClick={
-                handleLogout
-              }
-              size="icon"
-              variant="outline"
-              className="
+          </CardContent>
+
+        </Card>
+
+        {/* SUBJECTS */}
+
+        <Card className="
+          rounded-2xl
+          border-border/60
+        ">
+
+          <CardContent className="
+            p-6
+          ">
+
+            <div className="
+              flex
+              items-center
+              justify-between
+            ">
+
+              <div>
+
+                <p className="
+                  text-sm
+                  text-muted-foreground
+                ">
+
+                  Subjects
+
+                </p>
+
+                <h2 className="
+                  text-3xl
+                  font-bold
+                  mt-2
+                ">
+
+                  {
+                    stats.subjects
+                  }
+
+                </h2>
+
+              </div>
+
+              <div className="
+                w-12
+                h-12
                 rounded-xl
-              "
-            >
+                bg-violet-500/10
+                text-violet-500
+                flex
+                items-center
+                justify-center
+              ">
 
-              <LogOut size={18} />
+                <BookOpen size={22} />
 
-            </Button>
+              </div>
 
-          </div>
+            </div>
 
-        </div>
+          </CardContent>
 
-      </aside>
+        </Card>
 
-      {/* MAIN */}
+        {/* EXAMS */}
 
-      <main className="
-        flex-1
-        overflow-y-auto
+        <Card className="
+          rounded-2xl
+          border-border/60
+        ">
+
+          <CardContent className="
+            p-6
+          ">
+
+            <div className="
+              flex
+              items-center
+              justify-between
+            ">
+
+              <div>
+
+                <p className="
+                  text-sm
+                  text-muted-foreground
+                ">
+
+                  Exams
+
+                </p>
+
+                <h2 className="
+                  text-3xl
+                  font-bold
+                  mt-2
+                ">
+
+                  {
+                    stats.exams
+                  }
+
+                </h2>
+
+              </div>
+
+              <div className="
+                w-12
+                h-12
+                rounded-xl
+                bg-green-500/10
+                text-green-500
+                flex
+                items-center
+                justify-center
+              ">
+
+                <ClipboardList size={22} />
+
+              </div>
+
+            </div>
+
+          </CardContent>
+
+        </Card>
+
+        {/* RESULTS */}
+
+        <Card className="
+          rounded-2xl
+          border-border/60
+        ">
+
+          <CardContent className="
+            p-6
+          ">
+
+            <div className="
+              flex
+              items-center
+              justify-between
+            ">
+
+              <div>
+
+                <p className="
+                  text-sm
+                  text-muted-foreground
+                ">
+
+                  Results
+
+                </p>
+
+                <h2 className="
+                  text-3xl
+                  font-bold
+                  mt-2
+                ">
+
+                  {
+                    stats.results
+                  }
+
+                </h2>
+
+              </div>
+
+              <div className="
+                w-12
+                h-12
+                rounded-xl
+                bg-orange-500/10
+                text-orange-500
+                flex
+                items-center
+                justify-center
+              ">
+
+                <BarChart3 size={22} />
+
+              </div>
+
+            </div>
+
+          </CardContent>
+
+        </Card>
+
+      </div>
+
+      {/* RECENT EXAMS */}
+
+      <Card className="
+        rounded-2xl
+        border-border/60
       ">
 
-        {/* TOP HEADER */}
-
-        <div className="
-          h-20
-          px-8
-          border-b
-          border-border
-          flex
-          items-center
-          justify-between
+        <CardContent className="
+          p-6
+          space-y-6
         ">
 
           <div>
 
-            <h1 className="
-              text-2xl
-              font-bold
-              tracking-tight
+            <h2 className="
+              text-xl
+              font-semibold
             ">
 
-              Dashboard
+              Recent Exams
 
-            </h1>
+            </h2>
 
             <p className="
               text-sm
@@ -503,386 +449,71 @@ export default function AdminDashboardPage() {
               mt-1
             ">
 
-              Welcome back,
-              {" "}
-              {
-                admin?.ad_name
-              }
+              Latest created exams
 
             </p>
 
           </div>
 
-        </div>
-
-        {/* CONTENT */}
-
-        <div className="
-          p-8
-          space-y-8
-        ">
-
-          {/* STATS */}
-
           <div className="
-            grid
-            gap-6
-            md:grid-cols-2
-            xl:grid-cols-4
+            space-y-4
           ">
 
-            {/* STUDENTS */}
+            {recentExams.map(
+              (exam: any) => (
 
-            <Card className="
-              rounded-2xl
-              border-border/60
-            ">
-
-              <CardContent className="
-                p-6
-              ">
-
-                <div className="
-                  flex
-                  items-center
-                  justify-between
-                ">
+                <div
+                  key={
+                    exam.exam_id
+                  }
+                  className="
+                    rounded-xl
+                    border
+                    border-border/60
+                    p-5
+                    flex
+                    items-center
+                    justify-between
+                  "
+                >
 
                   <div>
+
+                    <h3 className="
+                      font-semibold
+                    ">
+
+                      {
+                        exam.exam_name
+                      }
+
+                    </h3>
 
                     <p className="
                       text-sm
                       text-muted-foreground
-                    ">
-
-                      Students
-
-                    </p>
-
-                    <h2 className="
-                      text-3xl
-                      font-bold
-                      mt-2
+                      mt-1
                     ">
 
                       {
-                        stats.students
+                        exam.subjects
+                          ?.label
                       }
 
-                    </h2>
-
-                  </div>
-
-                  <div className="
-                    w-12
-                    h-12
-                    rounded-xl
-                    bg-indigo-500/10
-                    text-indigo-500
-                    flex
-                    items-center
-                    justify-center
-                  ">
-
-                    <Users size={22} />
+                    </p>
 
                   </div>
 
                 </div>
 
-              </CardContent>
-
-            </Card>
-
-            {/* SUBJECTS */}
-
-            <Card className="
-              rounded-2xl
-              border-border/60
-            ">
-
-              <CardContent className="
-                p-6
-              ">
-
-                <div className="
-                  flex
-                  items-center
-                  justify-between
-                ">
-
-                  <div>
-
-                    <p className="
-                      text-sm
-                      text-muted-foreground
-                    ">
-
-                      Subjects
-
-                    </p>
-
-                    <h2 className="
-                      text-3xl
-                      font-bold
-                      mt-2
-                    ">
-
-                      {
-                        stats.subjects
-                      }
-
-                    </h2>
-
-                  </div>
-
-                  <div className="
-                    w-12
-                    h-12
-                    rounded-xl
-                    bg-violet-500/10
-                    text-violet-500
-                    flex
-                    items-center
-                    justify-center
-                  ">
-
-                    <ClipboardList size={22} />
-
-                  </div>
-
-                </div>
-
-              </CardContent>
-
-            </Card>
-
-            {/* EXAMS */}
-
-            <Card className="
-              rounded-2xl
-              border-border/60
-            ">
-
-              <CardContent className="
-                p-6
-              ">
-
-                <div className="
-                  flex
-                  items-center
-                  justify-between
-                ">
-
-                  <div>
-
-                    <p className="
-                      text-sm
-                      text-muted-foreground
-                    ">
-
-                      Exams
-
-                    </p>
-
-                    <h2 className="
-                      text-3xl
-                      font-bold
-                      mt-2
-                    ">
-
-                      {
-                        stats.exams
-                      }
-
-                    </h2>
-
-                  </div>
-
-                  <div className="
-                    w-12
-                    h-12
-                    rounded-xl
-                    bg-green-500/10
-                    text-green-500
-                    flex
-                    items-center
-                    justify-center
-                  ">
-
-                    <ClipboardList size={22} />
-
-                  </div>
-
-                </div>
-
-              </CardContent>
-
-            </Card>
-
-            {/* RESULTS */}
-
-            <Card className="
-              rounded-2xl
-              border-border/60
-            ">
-
-              <CardContent className="
-                p-6
-              ">
-
-                <div className="
-                  flex
-                  items-center
-                  justify-between
-                ">
-
-                  <div>
-
-                    <p className="
-                      text-sm
-                      text-muted-foreground
-                    ">
-
-                      Results
-
-                    </p>
-
-                    <h2 className="
-                      text-3xl
-                      font-bold
-                      mt-2
-                    ">
-
-                      {
-                        stats.results
-                      }
-
-                    </h2>
-
-                  </div>
-
-                  <div className="
-                    w-12
-                    h-12
-                    rounded-xl
-                    bg-orange-500/10
-                    text-orange-500
-                    flex
-                    items-center
-                    justify-center
-                  ">
-
-                    <BarChart3 size={22} />
-
-                  </div>
-
-                </div>
-
-              </CardContent>
-
-            </Card>
+              )
+            )}
 
           </div>
 
-          {/* RECENT EXAMS */}
+        </CardContent>
 
-          <Card className="
-            rounded-2xl
-            border-border/60
-          ">
-
-            <CardContent className="
-              p-6
-              space-y-6
-            ">
-
-              <div>
-
-                <h2 className="
-                  text-xl
-                  font-semibold
-                ">
-
-                  Recent Exams
-
-                </h2>
-
-                <p className="
-                  text-sm
-                  text-muted-foreground
-                  mt-1
-                ">
-
-                  Latest created exams
-
-                </p>
-
-              </div>
-
-              <div className="
-                space-y-4
-              ">
-
-                {recentExams.map(
-                  (exam) => (
-
-                    <div
-                      key={
-                        exam.exam_id
-                      }
-                      className="
-                        rounded-xl
-                        border
-                        border-border/60
-                        p-5
-                        flex
-                        items-center
-                        justify-between
-                      "
-                    >
-
-                      <div>
-
-                        <h3 className="
-                          font-semibold
-                        ">
-
-                          {
-                            exam.exam_name
-                          }
-
-                        </h3>
-
-                        <p className="
-                          text-sm
-                          text-muted-foreground
-                          mt-1
-                        ">
-
-                          {
-                            exam.subjects
-                              ?.label
-                          }
-
-                        </p>
-
-                      </div>
-
-                    </div>
-
-                  )
-                )}
-
-              </div>
-
-            </CardContent>
-
-          </Card>
-
-        </div>
-
-      </main>
+      </Card>
 
     </div>
 
