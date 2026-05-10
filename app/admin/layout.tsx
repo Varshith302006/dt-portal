@@ -18,6 +18,8 @@ import {
   Users,
   Shield,
   LogOut,
+  Moon,
+  Sun,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -36,6 +38,9 @@ export default function AdminLayout({
 
   const [admin, setAdmin] =
     useState<any>(null);
+
+  const [theme, setTheme] =
+    useState("dark");
 
   useEffect(() => {
 
@@ -58,6 +63,30 @@ export default function AdminLayout({
       )
     );
 
+    const savedTheme =
+      localStorage.getItem(
+        "admin-theme"
+      );
+
+    if (savedTheme) {
+
+      setTheme(savedTheme);
+
+      document.documentElement.classList.toggle(
+        "dark",
+        savedTheme === "dark"
+      );
+
+    }
+
+    else {
+
+      document.documentElement.classList.add(
+        "dark"
+      );
+
+    }
+
   }, []);
 
   const handleLogout =
@@ -68,6 +97,30 @@ export default function AdminLayout({
       );
 
       router.push("/");
+
+    };
+
+  const toggleTheme =
+    () => {
+
+      const next =
+        theme === "dark"
+
+          ? "light"
+
+          : "dark";
+
+      setTheme(next);
+
+      localStorage.setItem(
+        "admin-theme",
+        next
+      );
+
+      document.documentElement.classList.toggle(
+        "dark",
+        next === "dark"
+      );
 
     };
 
@@ -246,12 +299,11 @@ export default function AdminLayout({
                     transition-all
                     font-medium
 
-                    ${
-                      active
+                    ${active
 
-                        ? "bg-indigo-500 text-white"
+                      ? "bg-indigo-500 text-white"
 
-                        : "hover:bg-muted"
+                      : "hover:bg-muted"
                     }
                   `}
                 >
@@ -276,27 +328,32 @@ export default function AdminLayout({
         {/* FOOTER */}
 
         <div className="
-          p-4
-          border-t
-          border-border
-        ">
+  p-4
+  border-t
+  border-border
+">
 
           <div className="
-            rounded-2xl
-            border
-            border-border
-            p-4
-            flex
-            items-center
-            justify-between
-          ">
+    rounded-2xl
+    border
+    border-border
+    p-4
+    flex
+    items-center
+    justify-between
+    gap-3
+  ">
 
-            <div>
+            <div className="
+      flex-1
+      min-w-0
+    ">
 
               <h3 className="
-                font-semibold
-                text-sm
-              ">
+        font-semibold
+        text-sm
+        truncate
+      ">
 
                 {
                   admin?.ad_name
@@ -305,10 +362,10 @@ export default function AdminLayout({
               </h3>
 
               <p className="
-                text-xs
-                text-muted-foreground
-                mt-1
-              ">
+        text-xs
+        text-muted-foreground
+        mt-1
+      ">
 
                 Administrator
 
@@ -316,22 +373,62 @@ export default function AdminLayout({
 
             </div>
 
-            <Button
-              onClick={
-                handleLogout
-              }
-              size="icon"
-              variant="outline"
-              className="
-                rounded-xl
-              "
-            >
+            <div className="
+      flex
+      items-center
+      gap-2
+    ">
 
-              <LogOut
-                size={18}
-              />
+              {/* THEME TOGGLE */}
 
-            </Button>
+              <Button
+                onClick={
+                  toggleTheme
+                }
+                size="icon"
+                variant="outline"
+                className="
+          rounded-xl
+        "
+              >
+
+                {theme ===
+                  "dark"
+
+                  ? (
+                    <Sun
+                      size={18}
+                    />
+                  )
+
+                  : (
+                    <Moon
+                      size={18}
+                    />
+                  )}
+
+              </Button>
+
+              {/* LOGOUT */}
+
+              <Button
+                onClick={
+                  handleLogout
+                }
+                size="icon"
+                variant="outline"
+                className="
+          rounded-xl
+        "
+              >
+
+                <LogOut
+                  size={18}
+                />
+
+              </Button>
+
+            </div>
 
           </div>
 
