@@ -968,11 +968,7 @@ export default function ExamResultsPage() {
                         ? new Date(
                             new Date(
                               r.submitted_at
-                            ).getTime() +
-                            (5.5 *
-                              60 *
-                              60 *
-                              1000)
+                            ).getTime() 
                           ).toLocaleString(
                             "en-IN",
                             {

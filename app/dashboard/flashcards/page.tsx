@@ -7,6 +7,10 @@ import {
 } from "react";
 
 import {
+  useRouter,
+} from "next/navigation";
+
+import {
   Search,
   BookOpen,
   Layers3,
@@ -34,6 +38,8 @@ import { supabase } from "@/lib/supabase";
 
 export default function FlashcardsPage() {
 
+  const router =
+    useRouter();
 
   const [filtered, setFiltered] =
     useState<any[]>([]);
@@ -343,7 +349,7 @@ export default function FlashcardsPage() {
         gap-4
         lg:flex-row
         lg:items-center
-      ">
+        ">
 
         {/* SEARCH */}
         <div className="relative flex-1">
@@ -472,7 +478,7 @@ export default function FlashcardsPage() {
             disabled:opacity-50
             disabled:cursor-not-allowed
           "
-                  >
+        >
 
           <Download size={16} />
 
@@ -662,6 +668,52 @@ export default function FlashcardsPage() {
         </div>
 
       )}
+
+     { /* BOTTOM PRACTICE EXAM BUTTON */}
+
+{filtered.length > 0 &&
+  selectedSubject !== "all" &&
+  selectedModule !== "all" && (
+
+  <div className="
+    flex
+    justify-center
+    pt-6
+  ">
+
+    <button
+      onClick={() => {
+
+        router.push(
+          `/practice-exam?subject=${selectedSubject}&module=${selectedModule}`
+        );
+
+      }}
+      className="
+        h-14
+        px-10
+        rounded-2xl
+        bg-gradient-to-r
+        from-indigo-500
+        to-violet-600
+        text-white
+        text-base
+        font-semibold
+        shadow-lg
+        hover:scale-[1.02]
+        hover:opacity-90
+        transition-all
+        cursor-pointer
+      "
+    >
+
+      Start Practice Test
+
+    </button>
+
+  </div>
+
+)}
 
     </div>
   );

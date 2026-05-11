@@ -27,6 +27,11 @@ export default function DashboardPage() {
 
   const [activeExams, setActiveExams] = useState<any[]>([]);
 
+  const [
+    completedExamIds,
+    setCompletedExamIds,
+  ] = useState<number[]>([]);
+
   useEffect(() => {
 
     const storedStudent =
@@ -66,6 +71,33 @@ export default function DashboardPage() {
       .gte("end_time", now);
 
     setActiveExams(data || []);
+
+    /* FETCH COMPLETED EXAMS */
+
+    const {
+      data: completedData,
+    } = await supabase
+      .from(
+        "exam_results"
+      )
+      .select(
+        "exam_id"
+      )
+      .eq(
+        "st_id",
+        user.st_id
+      );
+
+    setCompletedExamIds(
+      (
+        completedData || []
+      ).map(
+        (
+          item: any
+        ) => item.exam_id
+      )
+    );
+
   };
 
   const formatDate = (
@@ -229,23 +261,58 @@ export default function DashboardPage() {
 
                 {/* BUTTON */}
                 <Button
-                  className="
-                    w-full
-                    rounded-md
-                    bg-gradient-to-r
-                    from-indigo-500
-                    to-violet-600
-                    hover:opacity-90
-                    cursor-pointer
-                  "
-                  onClick={() =>
-                    router.push(
-                      `/exam/${exam.exam_id}`
+                  disabled={
+                    completedExamIds.includes(
+                      exam.exam_id
                     )
                   }
+                  className={`
+    w-full
+    rounded-md
+    cursor-pointer
+
+    ${completedExamIds.includes(
+                    exam.exam_id
+                  )
+
+                      ? `
+          bg-green-500
+          hover:bg-green-500
+          cursor-not-allowed
+        `
+
+                      : `
+          bg-gradient-to-r
+          from-indigo-500
+          to-violet-600
+          hover:opacity-90
+        `
+                    }
+  `}
+                  onClick={() => {
+
+                    if (
+                      completedExamIds.includes(
+                        exam.exam_id
+                      )
+                    ) return;
+
+                    router.push(
+                      `/exam/${exam.exam_id}`
+                    );
+
+                  }}
                 >
 
-                  Start Exam
+                  {
+                    completedExamIds.includes(
+                      exam.exam_id
+                    )
+
+                      ? "Completed"
+
+                      : "Start Exam"
+                  }
 
                 </Button>
 

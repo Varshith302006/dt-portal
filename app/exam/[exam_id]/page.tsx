@@ -4,1111 +4,589 @@ import {
   useEffect,
   useRef,
   useState,
+  useCallback,
 } from "react";
 
 import { useParams } from "next/navigation";
 
-import {
-  Card,
-  CardContent,
-} from "@/components/ui/card";
-
 import { Button } from "@/components/ui/button";
-
 import { Textarea } from "@/components/ui/textarea";
-
-import { Badge } from "@/components/ui/badge";
 
 import { supabase } from "@/lib/supabase";
 
 import LoadingScreen from "@/components/exam/loading-screen";
-
 import InstructionsModal from "@/components/exam/instructions-modal";
-
 import ViolationModal from "@/components/exam/violation-modal";
-
-import DevtoolsBlocked from "@/components/exam/devtools-blocked";
 
 const MAX_VIOLATIONS = 3;
 
 export default function ExamPage() {
-
   const params = useParams();
-
   const exam_id = params.exam_id;
 
-  const [loading, setLoading] =
-    useState(true);
+  const [loading, setLoading] = useState(true);
+  const [exam, setExam] = useState<any>(null);
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(1800);
+  const [started, setStarted] = useState(false);
+  const [violations, setViolations] = useState(0);
+  const [showViolation, setShowViolation] = useState(false);
+  const [
+    violationType,
+    setViolationType,
+  ] = useState("");
 
-  const [exam, setExam] =
-    useState<any>(null);
+  const [submittedQuestions, setSubmittedQuestions] = useState<number[]>([]);
 
-  const [questions, setQuestions] =
-    useState<any[]>([]);
+  const [
+    showResult,
+    setShowResult,
+  ] = useState(false);
 
-  const [currentIndex, setCurrentIndex] =
-    useState(0);
+  const [
+    isSubmitting,
+    setIsSubmitting,
+  ] = useState(false);
 
-  const [timeLeft, setTimeLeft] =
-    useState(1800);
+  const [
+    finalResult,
+    setFinalResult,
+  ] = useState<any>(null);
 
-  const [started, setStarted] =
-    useState(false);
+  // Countdown state
+  const [countdown, setCountdown] = useState<number | null>(null);
 
-  const [violations, setViolations] =
-    useState(0);
+  // Key lock during violation
+  const lockKeys = useRef(false);
 
-  const [showViolation, setShowViolation] =
-    useState(false);
-
-  const [devtoolsOpen, setDevtoolsOpen] =
-    useState(false);
-
-  const [submittedQuestions, setSubmittedQuestions] =
-    useState<number[]>([]);
-
-  const violationReason =
-    useRef("");
+  const violationReason = useRef("");
+  const violationsRef = useRef(0);
 
   // FETCH EXAM
   useEffect(() => {
-
     fetchExam();
-
   }, []);
 
   const fetchExam = async () => {
-
-    const { data: examData } =
-      await supabase
-        .from("conduct_exam")
-        .select(`
-          *,
-          subjects (
-            label
-          )
-        `)
-        .eq("exam_id", exam_id)
-        .single();
+    const { data: examData } = await supabase
+      .from("conduct_exam")
+      .select(`*, subjects (label)`)
+      .eq("exam_id", exam_id)
+      .single();
 
     setExam(examData);
-    setLoading(false);
 
-    const { data: allQuestions } =
-      await supabase
-        .from("dt_questions")
-        .select(`
-      *,
-      modules (
-        label
+    /* CHECK IF ALREADY COMPLETED */
+
+    const student =
+      JSON.parse(
+        localStorage.getItem(
+          "student"
+        ) || "{}"
+      );
+
+    const {
+      data: existingResult,
+    } = await supabase
+      .from(
+        "exam_results"
       )
-    `)
-        .eq(
-          "subject_id",
-          examData.subject_id
-        );
+      .select("*")
+      .eq(
+        "exam_id",
+        Number(exam_id)
+      )
+      .eq(
+        "st_id",
+        student.st_id
+      )
+      .maybeSingle();
 
-    // ALL QUESTIONS
-    const questions =
-      allQuestions || [];
+    if (
+      existingResult
+    ) {
 
-    // GROUP BY MODULE
+      setFinalResult({
+
+        totalMarks:
+          existingResult.total_marks,
+
+        percentage:
+          existingResult.avg_match_pct,
+
+        attempted:
+          existingResult.attempted_questions,
+
+        totalQuestions:
+          existingResult.total_questions,
+
+      });
+
+      setShowResult(
+        true
+      );
+
+      setLoading(
+        false
+      );
+
+      return;
+
+    }
+
+    const { data: allQuestions } = await supabase
+      .from("dt_questions")
+      .select(`*, modules (label)`)
+      .eq("subject_id", examData.subject_id);
+
+    const questions = allQuestions || [];
+
     const moduleMap: any = {};
-
     questions.forEach((q: any) => {
-
-      const moduleId =
-        q.module_id;
-
-      if (!moduleMap[moduleId]) {
-
-        moduleMap[moduleId] = [];
-
-      }
-
+      const moduleId = q.module_id;
+      if (!moduleMap[moduleId]) moduleMap[moduleId] = [];
       moduleMap[moduleId].push(q);
-
     });
 
-    // RANDOM FUNCTION
-    const getRandomQuestions = (
-      arr: any[],
-      count: number
-    ) => {
+    const getRandomQuestions = (arr: any[], count: number) =>
+      [...arr].sort(() => 0.5 - Math.random()).slice(0, count);
 
-      return [...arr]
-        .sort(() => 0.5 - Math.random())
-        .slice(0, count);
+    const { data: orderedModules } = await supabase
+      .from("modules")
+      .select("id, label")
+      .eq("subject_id", examData?.subject_id || exam?.subject_id)
+      .order("id", { ascending: true });
 
-    };
-
-    // SORT MODULE IDS
-    const { data: orderedModules } =
-      await supabase
-        .from("modules")
-        .select("id, label")
-        .eq(
-          "subject_id",
-          examData?.subject_id || exam?.subject_id
-        )
-        .order("id", {
-          ascending: true,
-        });
-
-    const moduleIds =
-      (orderedModules || []).map(
-        (m: any) => m.id
-      );
+    const moduleIds = (orderedModules || []).map((m: any) => m.id);
 
     let selectedQuestions: any[] = [];
 
-    // DT1
-    if (
-      examData.exam_name
-        ?.toLowerCase()
-        .includes("dt1")
-    ) {
-
-      // MODULE 1
-      selectedQuestions.push(
-        ...getRandomQuestions(
-          moduleMap[moduleIds[0]] || [],
-          4
-        )
-      );
-
-      // MODULE 2
-      selectedQuestions.push(
-        ...getRandomQuestions(
-          moduleMap[moduleIds[1]] || [],
-          4
-        )
-      );
-
-      // FIRST HALF OF MODULE 3
-      const thirdModule =
-        moduleMap[moduleIds[2]] || [];
-
-      const firstHalf =
-        thirdModule.slice(
-          0,
-          Math.ceil(
-            thirdModule.length / 2
-          )
-        );
-
-      selectedQuestions.push(
-        ...getRandomQuestions(
-          firstHalf,
-          2
-        )
-      );
-
+    if (examData.exam_name?.toLowerCase().includes("1")) {
+      selectedQuestions.push(...getRandomQuestions(moduleMap[moduleIds[0]] || [], 4));
+      selectedQuestions.push(...getRandomQuestions(moduleMap[moduleIds[1]] || [], 4));
+      const thirdModule = moduleMap[moduleIds[2]] || [];
+      const firstHalf = thirdModule.slice(0, Math.ceil(thirdModule.length / 2));
+      selectedQuestions.push(...getRandomQuestions(firstHalf, 2));
+    } else if (examData.exam_name?.toLowerCase().includes("2")) {
+      const thirdModule = moduleMap[moduleIds[2]] || [];
+      const secondHalf = thirdModule.slice(Math.ceil(thirdModule.length / 2));
+      selectedQuestions.push(...getRandomQuestions(secondHalf, 2));
+      selectedQuestions.push(...getRandomQuestions(moduleMap[moduleIds[3]] || [], 4));
+      selectedQuestions.push(...getRandomQuestions(moduleMap[moduleIds[4]] || [], 4));
     }
 
-    // DT2
-    else if (
-      examData.exam_name
-        ?.toLowerCase()
-        .includes("dt2")
-    ) {
+    const questionData = selectedQuestions.sort(() => 0.5 - Math.random());
 
-      // SECOND HALF OF MODULE 3
-      const thirdModule =
-        moduleMap[moduleIds[2]] || [];
-
-      const secondHalf =
-        thirdModule.slice(
-          Math.ceil(
-            thirdModule.length / 2
-          )
-        );
-
-      selectedQuestions.push(
-        ...getRandomQuestions(
-          secondHalf,
-          2
-        )
-      );
-
-      // MODULE 4
-      selectedQuestions.push(
-        ...getRandomQuestions(
-          moduleMap[moduleIds[3]] || [],
-          4
-        )
-      );
-
-      // MODULE 5
-      selectedQuestions.push(
-        ...getRandomQuestions(
-          moduleMap[moduleIds[4]] || [],
-          4
-        )
-      );
-
-    }
-
-    // FINAL RANDOMIZE
-    const questionData =
-      selectedQuestions.sort(
-        () => 0.5 - Math.random()
-      );
-
-    const saved =
-      localStorage.getItem(
-        `exam-${exam_id}-answers`
-      );
+    const saved = localStorage.getItem(`exam-${exam_id}-answers`);
 
     if (saved) {
-
-      setQuestions(
-        JSON.parse(saved)
-      );
-
+      setQuestions(JSON.parse(saved));
     } else {
-
       setQuestions(
-        (questionData || []).map(
-          (q: any) => ({
-            ...q,
-            userAnswer: "",
-            submitCount: 0,
-            submitted: false,
-            matchPercentage: 0,
-            marks: 0,
-          })
-        )
+        (questionData || []).map((q: any) => ({
+          ...q,
+          userAnswer: "",
+          submitCount: 0,
+          submitted: false,
+          matchPercentage: 0,
+          marks: 0,
+        }))
       );
-
     }
 
     setLoading(false);
-
-  };
-
-  const fetchQuestions = async () => {
-
-    if (!exam) return;
-
-    const { data: allQuestions } =
-      await supabase
-        .from("dt_questions")
-        .select(`
-        *,
-        modules (
-          label
-        )
-      `)
-        .eq(
-          "subject_id",
-          exam.subject_id
-        );
-
-    const questions =
-      allQuestions || [];
-
-    const moduleMap: any = {};
-
-    questions.forEach((q: any) => {
-
-      const moduleId =
-        q.module_id;
-
-      if (!moduleMap[moduleId]) {
-
-        moduleMap[moduleId] = [];
-
-      }
-
-      moduleMap[moduleId].push(q);
-
-    });
-
-    const getRandomQuestions = (
-      arr: any[],
-      count: number
-    ) => {
-
-      return [...arr]
-        .sort(() => 0.5 - Math.random())
-        .slice(0, count);
-
-    };
-
-    const { data: orderedModules } =
-      await supabase
-        .from("modules")
-        .select("id, label")
-        .eq(
-          "subject_id",
-          exam?.subject_id
-        )
-        .order("id", {
-          ascending: true,
-        });
-
-    const moduleIds =
-      (orderedModules || []).map(
-        (m: any) => m.id
-      );
-
-    let selectedQuestions: any[] = [];
-
-    // DT1
-    if (
-      exam.exam_name
-        ?.toLowerCase()
-        .includes("1")
-    ) {
-
-      selectedQuestions.push(
-        ...getRandomQuestions(
-          moduleMap[moduleIds[0]] || [],
-          4
-        )
-      );
-
-      selectedQuestions.push(
-        ...getRandomQuestions(
-          moduleMap[moduleIds[1]] || [],
-          4
-        )
-      );
-
-      const thirdModule =
-        moduleMap[moduleIds[2]] || [];
-
-      const firstHalf =
-        thirdModule.slice(
-          0,
-          Math.ceil(
-            thirdModule.length / 2
-          )
-        );
-
-      selectedQuestions.push(
-        ...getRandomQuestions(
-          firstHalf,
-          2
-        )
-      );
-
-    }
-
-    // DT2
-    else {
-
-      const thirdModule =
-        moduleMap[moduleIds[2]] || [];
-
-      const secondHalf =
-        thirdModule.slice(
-          Math.ceil(
-            thirdModule.length / 2
-          )
-        );
-
-      selectedQuestions.push(
-        ...getRandomQuestions(
-          secondHalf,
-          2
-        )
-      );
-
-      selectedQuestions.push(
-        ...getRandomQuestions(
-          moduleMap[moduleIds[3]] || [],
-          4
-        )
-      );
-
-      selectedQuestions.push(
-        ...getRandomQuestions(
-          moduleMap[moduleIds[4]] || [],
-          4
-        )
-      );
-
-    }
-
-    const finalQuestions =
-      selectedQuestions.sort(
-        () => 0.5 - Math.random()
-      );
-
-    setQuestions(
-
-      finalQuestions.map((q: any) => ({
-        ...q,
-        userAnswer: "",
-        submitCount: 0,
-        submitted: false,
-        matchPercentage: 0,
-        marks: 0,
-      }))
-
-    );
-
   };
 
   // FULLSCREEN
-  const enterFullscreen = async () => {
+  const enterFullscreen =
+    async () => {
 
-    const element =
-      document.documentElement;
+      try {
 
-    if (
-      element.requestFullscreen
-    ) {
+        const element =
+          document.documentElement;
 
-      await element.requestFullscreen();
+        if (
+          element.requestFullscreen
+        ) {
 
+          await element.requestFullscreen();
+
+        }
+
+      }
+
+      catch (
+      error
+      ) {
+
+        console.error(
+          "Fullscreen failed:",
+          error
+        );
+
+      }
+
+    };
+
+  // COUNTDOWN → START EXAM
+  const startExam =
+    async () => {
+
+      await enterFullscreen();
+
+      setCountdown(3);
+
+    };
+
+  // Countdown effect
+  useEffect(() => {
+    if (countdown === null) return;
+
+    if (countdown === 0) {
+      // Countdown finished — launch exam
+      const launch = async () => {
+        setLoading(true);
+        setCountdown(null);
+        setStarted(true);
+        setLoading(false);
+      };
+      launch();
+      return;
     }
 
-  };
+    const timer = setTimeout(() => {
+      setCountdown((prev) => (prev !== null ? prev - 1 : null));
+    }, 1000);
 
-  // START EXAM
-  const startExam = async () => {
-
-    setLoading(true);
-
-    await enterFullscreen();
-
-    await fetchQuestions();
-
-    setStarted(true);
-
-    setLoading(false);
-
-  };
+    return () => clearTimeout(timer);
+  }, [countdown]);
 
   // TIMER
   useEffect(() => {
-
     if (!started) return;
 
-    const interval =
-      setInterval(() => {
+    const interval = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (
+          prev <= 1
+        ) {
 
-        setTimeLeft((prev) => {
+          clearInterval(
+            interval
+          );
 
-          if (prev <= 1) {
-
-            clearInterval(interval);
+          if (
+            !isSubmitting
+          ) {
 
             handleSubmit();
 
-            return 0;
-
           }
 
-          return prev - 1;
+          return 0;
 
-        });
+        }
+        return prev - 1;
+      });
+    }, 1000);
 
-      }, 1000);
-
-    return () =>
-      clearInterval(interval);
-
+    return () => clearInterval(interval);
   }, [started]);
+
+  // Global key blocking during violation
+  useEffect(() => {
+    const blockAll = (e: KeyboardEvent) => {
+      if (lockKeys.current) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+    };
+
+    document.addEventListener("keydown", blockAll, true);
+    document.addEventListener("keyup", blockAll, true);
+    document.addEventListener("keypress", blockAll, true);
+
+    return () => {
+      document.removeEventListener("keydown", blockAll, true);
+      document.removeEventListener("keyup", blockAll, true);
+      document.removeEventListener("keypress", blockAll, true);
+    };
+  }, []);
+
+  // ADD VIOLATION with auto-restore
+  const addViolation =
+    useCallback(
+      (
+        reason: string
+      ) => {
+
+        violationReason.current =
+          reason;
+
+        setViolationType(
+          reason
+        );
+
+        setViolations(
+          (
+            prev
+          ) => {
+
+            const next =
+              prev + 1;
+
+            violationsRef.current =
+              next;
+
+            setShowViolation(
+              true
+            );
+
+            lockKeys.current =
+              true;
+
+            if (
+              next >=
+              MAX_VIOLATIONS
+            ) {
+
+              if (
+                !isSubmitting
+              ) {
+
+                handleSubmit();
+
+              }
+
+            }
+
+            return next;
+
+          }
+        );
+
+      },
+      []
+    );
+
+  const continueExam =
+    async () => {
+
+      if (
+        violationType ===
+        "Exited fullscreen"
+      ) {
+
+        await enterFullscreen();
+
+      }
+
+      lockKeys.current =
+        false;
+
+      setShowViolation(
+        false
+      );
+
+    };
 
   // TAB SWITCH
   useEffect(() => {
-
-    const handleVisibility =
-      () => {
-
-        if (
-          document.hidden &&
-          started
-        ) {
-
-          addViolation(
-            "Tab switching detected"
-          );
-
-        }
-
-      };
-
-    document.addEventListener(
-      "visibilitychange",
-      handleVisibility
-    );
-
-    return () => {
-
-      document.removeEventListener(
-        "visibilitychange",
-        handleVisibility
-      );
-
+    const handleVisibility = () => {
+      if (document.hidden && started) {
+        addViolation("Tab switching detected");
+      }
     };
 
-  }, [started]);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [started, addViolation]);
 
   // FULLSCREEN EXIT
   useEffect(() => {
-
-    const handleFullscreen =
-      () => {
-
-        if (
-          !document.fullscreenElement &&
-          started
-        ) {
-
-          addViolation(
-            "Exited fullscreen"
-          );
-
-        }
-
-      };
-
-    document.addEventListener(
-      "fullscreenchange",
-      handleFullscreen
-    );
-
-    return () => {
-
-      document.removeEventListener(
-        "fullscreenchange",
-        handleFullscreen
-      );
-
+    const handleFullscreen = () => {
+      if (!document.fullscreenElement && started) {
+        addViolation("Exited fullscreen");
+      }
     };
 
-  }, [started]);
+    document.addEventListener("fullscreenchange", handleFullscreen);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreen);
+  }, [started, addViolation]);
 
-  // DEVTOOLS
+  // COPY / PASTE / RIGHT CLICK BLOCK
   useEffect(() => {
+    const preventCopyPaste = (e: Event) => {
+      e.preventDefault();
+      if (started) addViolation("Copy/Paste attempt detected");
+    };
 
-    const detectDevtools =
-      setInterval(() => {
+    const preventRightClick = (e: MouseEvent) => {
+      e.preventDefault();
+      if (started) addViolation("Right click detected");
+    };
 
-        const threshold = 160;
+    document.addEventListener("copy", preventCopyPaste);
+    document.addEventListener("paste", preventCopyPaste);
+    document.addEventListener("cut", preventCopyPaste);
+    document.addEventListener("contextmenu", preventRightClick);
 
-        if (
-          window.outerWidth -
-          window.innerWidth >
-          threshold ||
+    return () => {
+      document.removeEventListener("copy", preventCopyPaste);
+      document.removeEventListener("paste", preventCopyPaste);
+      document.removeEventListener("cut", preventCopyPaste);
+      document.removeEventListener("contextmenu", preventRightClick);
+    };
+  }, [started, addViolation]);
 
-          window.outerHeight -
-          window.innerHeight >
-          threshold
-        ) {
-
-          setDevtoolsOpen(true);
-
-        }
-
-      }, 1000);
-
-    return () =>
-      clearInterval(
-        detectDevtools
-      );
-
-  }, []);
-
-  // COPY PASTE BLOCK
+  // SHORTCUT BLOCK (F12, Ctrl+Shift+I, Ctrl+U, Escape)
   useEffect(() => {
-
-    const preventCopyPaste =
-      (e: Event) => {
-
+    const handleKeys = (e: KeyboardEvent) => {
+      // Already handled by global lock
+      if (lockKeys.current) {
         e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
 
-        addViolation(
-          "Copy/Paste attempt detected"
-        );
-
-      };
-
-    const preventRightClick =
-      (e: MouseEvent) => {
-
+      if (e.key === "F12") {
         e.preventDefault();
+        if (started) addViolation("Developer tools shortcut blocked");
+      }
 
-        addViolation(
-          "Right click detected"
-        );
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "i") {
+        e.preventDefault();
+        if (started) addViolation("Developer tools shortcut blocked");
+      }
 
-      };
-
-    document.addEventListener(
-      "copy",
-      preventCopyPaste
-    );
-
-    document.addEventListener(
-      "paste",
-      preventCopyPaste
-    );
-
-    document.addEventListener(
-      "cut",
-      preventCopyPaste
-    );
-
-    document.addEventListener(
-      "contextmenu",
-      preventRightClick
-    );
-
-    return () => {
-
-      document.removeEventListener(
-        "copy",
-        preventCopyPaste
-      );
-
-      document.removeEventListener(
-        "paste",
-        preventCopyPaste
-      );
-
-      document.removeEventListener(
-        "cut",
-        preventCopyPaste
-      );
-
-      document.removeEventListener(
-        "contextmenu",
-        preventRightClick
-      );
-
+      if (e.ctrlKey && e.key.toLowerCase() === "u") {
+        e.preventDefault();
+        if (started) addViolation("View source blocked");
+      }
     };
 
-  }, [started]);
+    document.addEventListener("keydown", handleKeys);
+    return () => document.removeEventListener("keydown", handleKeys);
+  }, [started, addViolation]);
 
-  // SHORTCUT BLOCK
+  // WINDOW FOCUS LOSS
   useEffect(() => {
-
-    const handleKeys =
-      (
-        e: KeyboardEvent
-      ) => {
-
-        // F12
-        if (
-          e.key === "F12"
-        ) {
-
-          e.preventDefault();
-
-          addViolation(
-            "F12 blocked"
-          );
-
-        }
-
-        // CTRL SHIFT I
-        if (
-          e.ctrlKey &&
-          e.shiftKey &&
-          e.key.toLowerCase() ===
-          "i"
-        ) {
-
-          e.preventDefault();
-
-          addViolation(
-            "Devtools shortcut blocked"
-          );
-
-        }
-
-        // CTRL U
-        if (
-          e.ctrlKey &&
-          e.key.toLowerCase() ===
-          "u"
-        ) {
-
-          e.preventDefault();
-
-          addViolation(
-            "View source blocked"
-          );
-
-        }
-
-      };
-
-    document.addEventListener(
-      "keydown",
-      handleKeys
-    );
-
-    return () => {
-
-      document.removeEventListener(
-        "keydown",
-        handleKeys
-      );
-
+    const handleBlur = () => {
+      if (started) addViolation("Window focus lost");
     };
 
-  }, [started]);
+    window.addEventListener("blur", handleBlur);
+    return () => window.removeEventListener("blur", handleBlur);
+  }, [started, addViolation]);
 
   // PREVENT BACK
   useEffect(() => {
-
-    const preventBack =
-      () => {
-
-        window.history.pushState(
-          null,
-          "",
-          window.location.href
-        );
-
-      };
-
-    window.history.pushState(
-      null,
-      "",
-      window.location.href
-    );
-
-    window.addEventListener(
-      "popstate",
-      preventBack
-    );
-
-    return () => {
-
-      window.removeEventListener(
-        "popstate",
-        preventBack
-      );
-
+    const preventBack = () => {
+      window.history.pushState(null, "", window.location.href);
     };
 
+    window.history.pushState(null, "", window.location.href);
+    window.addEventListener("popstate", preventBack);
+    return () => window.removeEventListener("popstate", preventBack);
   }, []);
 
-  // ADD VIOLATION
-  const addViolation = (
-    reason: string
-  ) => {
-
-    violationReason.current =
-      reason;
-
-    setViolations((prev) => {
-
-      const next =
-        prev + 1;
-
-      setShowViolation(true);
-
-      if (
-        next >=
-        MAX_VIOLATIONS
-      ) {
-
-        handleSubmit();
-
-      }
-
-      return next;
-
-    });
-
-  };
-
   // FORMAT TIME
-  const formatTime = (
-    seconds: number
-  ) => {
-
-    const mins =
-      Math.floor(
-        seconds / 60
-      );
-
-    const secs =
-      seconds % 60;
-
-    return `${String(
-      mins
-    ).padStart(
-      2,
-      "0"
-    )}:${String(
-      secs
-    ).padStart(
-      2,
-      "0"
-    )}`;
-
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   };
 
   // UPDATE ANSWER
-  const updateAnswer = (
-    value: string
-  ) => {
-
-    const updated =
-      [...questions];
-
-    updated[currentIndex]
-      .userAnswer =
-      value;
-
+  const updateAnswer = (value: string) => {
+    const updated = [...questions];
+    updated[currentIndex].userAnswer = value;
     setQuestions(updated);
-
-    localStorage.setItem(
-      `exam-${exam_id}-answers`,
-      JSON.stringify(updated)
-    );
-
+    localStorage.setItem(`exam-${exam_id}-answers`, JSON.stringify(updated));
   };
 
   const STOP_WORDS = new Set([
-    "a",
-    "an",
-    "the",
-    "is",
-    "it",
-    "in",
-    "on",
-    "of",
-    "to",
-    "and",
-    "or",
-    "but",
-    "for",
-    "with",
-    "this",
-    "that",
-    "are",
-    "was",
-    "were",
-    "be",
-    "been",
-    "being",
-    "have",
-    "has",
-    "had",
-    "do",
-    "does",
-    "did",
-    "will",
-    "would",
-    "could",
-    "should",
-    "may",
-    "might",
-    "can",
-    "at",
-    "by",
-    "from",
-    "as",
-    "into",
-    "about",
-    "up",
-    "out",
-    "than",
-    "then",
-    "them",
-    "they",
-    "their",
-    "there",
-    "these",
-    "those",
-    "so",
-    "if",
-    "not",
-    "no",
-    "we",
-    "you",
-    "he",
-    "she",
-    "its",
-    "our",
-    "your",
-    "his",
-    "her",
-    "my",
-    "me",
-    "am",
-    "i",
+    "a", "an", "the", "is", "it", "in", "on", "of", "to", "and", "or", "but", "for", "with",
+    "this", "that", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do",
+    "does", "did", "will", "would", "could", "should", "may", "might", "can", "at", "by",
+    "from", "as", "into", "about", "up", "out", "than", "then", "them", "they", "their",
+    "there", "these", "those", "so", "if", "not", "no", "we", "you", "he", "she", "its",
+    "our", "your", "his", "her", "my", "me", "am", "i",
   ]);
 
-  const extractKeywords = (
-    text: string
-  ) => {
-
-    return text
+  const extractKeywords = (text: string) =>
+    text
       .toLowerCase()
-      .replace(
-        /[^a-z0-9\s]/g,
-        " "
-      )
+      .replace(/[^a-z0-9\s]/g, " ")
       .split(/\s+/)
-      .filter(
-        (w) =>
-          w.length > 2 &&
-          !STOP_WORDS.has(w)
-      );
+      .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
 
-  };
-
-  const calculateMatchPercentage = (
-    correctAnswer: string,
-    userAnswer: string
-  ) => {
-
-    const correctKeywords =
-      extractKeywords(
-        correctAnswer
-      );
-
-    const userKeywords =
-      extractKeywords(
-        userAnswer
-      );
-
-    if (
-      !correctKeywords.length
-    ) {
-
-      return 0;
-
-    }
+  const calculateMatchPercentage = (correctAnswer: string, userAnswer: string) => {
+    const correctKeywords = extractKeywords(correctAnswer);
+    const userKeywords = extractKeywords(userAnswer);
+    if (!correctKeywords.length) return 0;
 
     let matched = 0;
-
-    correctKeywords.forEach(
-      (keyword) => {
-
-        if (
-          userKeywords.some(
-            (u) =>
-              u.includes(
-                keyword
-              ) ||
-              keyword.includes(u)
-          )
-        ) {
-
-          matched++;
-
-        }
-
+    correctKeywords.forEach((keyword) => {
+      if (userKeywords.some((u) => u.includes(keyword) || keyword.includes(u))) {
+        matched++;
       }
-    );
+    });
 
-    return Math.round(
-      (
-        matched /
-        correctKeywords.length
-      ) * 100
-    );
-
+    return Math.round((matched / correctKeywords.length) * 100);
   };
 
-  const getMarksFromPercent = (
-    pct: number
-  ) => {
-
-    if (pct >= 85)
-      return 5;
-
-    if (pct >= 65)
-      return 4;
-
-    if (pct >= 55)
-      return 3;
-
-    if (pct >= 45)
-      return 2;
-
-    if (pct >= 30)
-      return 1;
-
+  const getMarksFromPercent = (pct: number) => {
+    if (pct >= 85) return 5;
+    if (pct >= 65) return 4;
+    if (pct >= 55) return 3;
+    if (pct >= 45) return 2;
+    if (pct >= 30) return 1;
     return 0;
-
   };
 
-  const submitQuestion =
-    async () => {
+  const submitQuestion = async () => {
+    const updated = [...questions];
+    const current = updated[currentIndex];
 
-      const updated =
-        [...questions];
+    if (current.submitCount >= 3) return;
 
-      const current =
-        updated[currentIndex];
+    current.submitCount += 1;
+    current.submitted = true;
 
-      // MAX 3 SUBMITS
-      if (
-        current.submitCount >= 3
-      ) {
+    const percentage = current.userAnswer.trim()
+      ? calculateMatchPercentage(current.answer, current.userAnswer)
+      : 0;
 
-        return;
+    const marks = current.userAnswer.trim() ? getMarksFromPercent(percentage) : 0;
 
-      }
+    current.matchPercentage = percentage;
+    current.marks = marks;
+    updated[currentIndex] = current;
 
-      current.submitCount += 1;
+    setQuestions(updated);
 
-      current.submitted = true;
+    if (!submittedQuestions.includes(currentIndex)) {
+      setSubmittedQuestions((prev) => [...prev, currentIndex]);
+    }
 
-      const percentage =
-        current.userAnswer.trim()
-          ? calculateMatchPercentage(
-            current.answer,
-            current.userAnswer
-          )
-          : 0;
+    localStorage.setItem(`exam-${exam_id}-answers`, JSON.stringify(updated));
+  };
 
-      const marks =
-        current.userAnswer.trim()
-          ? getMarksFromPercent(
-            percentage
-          )
-          : 0;
-
-      current.matchPercentage =
-        percentage;
-
-      current.marks =
-        marks;
-
-      updated[currentIndex] =
-        current;
-
-      setQuestions(updated);
-
-      if (
-        !submittedQuestions.includes(
-          currentIndex
-        )
-      ) {
-
-        setSubmittedQuestions(
-          (prev) => [
-            ...prev,
-            currentIndex,
-          ]
-        );
-
-      }
-
-      localStorage.setItem(
-        `exam-${exam_id}-answers`,
-        JSON.stringify(updated)
-      );
-
-    };
-  // SUBMIT
+  // SUBMIT EXAM
   const handleSubmit =
     async () => {
+
+      if (
+        isSubmitting
+      ) return;
+
+      setIsSubmitting(
+        true
+      );
 
       const student =
         JSON.parse(
@@ -1117,587 +595,485 @@ export default function ExamPage() {
           ) || "{}"
         );
 
-      let totalMarks = 0;
+      /* TOTAL RAW MARKS */
+
+      let rawMarks = 0;
 
       questions.forEach(
-        (q) => {
+        (
+          q
+        ) => {
 
-          totalMarks +=
+          rawMarks +=
             q.marks || 0;
 
         }
       );
 
+      /* CONVERT TO 5 MARK SCALE */
+
+      /* AVERAGE MARK */
+
+      const averageMarks =
+        rawMarks /
+        questions.length;
+
+      /* ROUND TO NEAREST INTEGER */
+
+      const totalMarks =
+        averageMarks >=
+          Math.floor(
+            averageMarks
+          ) + 0.5
+
+          ? Math.ceil(
+            averageMarks
+          )
+
+          : Math.floor(
+            averageMarks
+          );
+
       const percentage =
         (
           (
-            totalMarks /
-            (questions.length * 5)
+            totalMarks / 5
           ) * 100
         ).toFixed(1);
 
-      await supabase
-        .from("exam_results")
-        .insert({
-          exam_id,
-          st_id:
-            student.st_id,
-          total_marks:
-            totalMarks,
-          avg_match_pct:
-            percentage,
-          violation_count:
-            violations,
-          submitted_at:
-            new Date().toISOString(),
-        });
+      const attempted =
+        questions.filter(
+          (
+            q
+          ) =>
+            q.userAnswer?.trim()
+        ).length;
+
+      /* SAVE RESULT */
+
+      const {
+        data: existingResult,
+      } = await supabase
+        .from(
+          "exam_results"
+        )
+        .select("id")
+        .eq(
+          "exam_id",
+          Number(exam_id)
+        )
+        .eq(
+          "st_id",
+          student.st_id
+        )
+        .maybeSingle();
+
+      if (
+        existingResult
+      ) {
+
+        setShowResult(
+          true
+        );
+
+        return;
+
+      }
+      const {
+        data,
+        error,
+      } = await supabase
+        .from(
+          "exam_results"
+        )
+        .insert([
+          {
+
+            exam_id:
+              Number(exam_id),
+
+            st_id:
+              student.st_id,
+
+            total_marks:
+              totalMarks,
+
+            final_grade:
+              totalMarks,
+
+            avg_match_pct:
+              Math.round(
+                Number(
+                  percentage
+                )
+              ),
+
+            attempted_questions:
+              attempted,
+
+            total_questions:
+              questions.length,
+
+            violations_count:
+              violationsRef.current,
+
+            submitted_at:
+              new Date()
+                .toISOString(),
+
+          }
+        ])
+        .select();
+
+      if (error) {
+
+        console.error(
+          "SUPABASE ERROR:",
+          error
+        );
+
+        return;
+
+      }
+
+      console.log(
+        "INSERTED:",
+        data
+      );
 
       localStorage.removeItem(
         `exam-${exam_id}-answers`
       );
 
-      alert(
-        "Exam Submitted Successfully"
-      );
+      /* STORE RESULT */
 
-      window.location.href =
-        "/dashboard/analysis";
+      setFinalResult({
+
+        totalMarks,
+
+        percentage,
+
+        attempted,
+
+        totalQuestions:
+          questions.length,
+
+      });
+
+      /* SHOW RESULT PAGE */
+
+      setShowResult(
+        true
+      );
 
     };
 
   // LOADING
   if (loading) {
-
-    return (
-      <LoadingScreen
-        message="Loading Exam..."
-      />
-    );
-
+    return <LoadingScreen message="Loading Exam..." />;
   }
 
-  // DEVTOOLS BLOCK
-  if (
-    devtoolsOpen &&
-    !started
-  ) {
-
+  // INSTRUCTIONS SCREEN
+  if (!started && countdown === null) {
     return (
-      <DevtoolsBlocked
-        onRetry={() =>
-          window.location.reload()
-        }
-      />
-    );
-
-  }
-
-  const currentQuestion =
-    questions[currentIndex];
-
-  // SHOW ONLY INSTRUCTIONS SCREEN
-  if (!started) {
-
-    return (
-
       <InstructionsModal
-        open={true}
         examName={exam?.exam_name}
         duration={30}
         onStart={startExam}
       />
-
     );
-
   }
 
-  return (
-
-    <>
-
-      {/* VIOLATION MODAL */}
-      {showViolation && (
-
-        <ViolationModal
-          title="Violation Detected"
-          message={
-            violationReason.current
+  // COUNTDOWN SCREEN
+  if (countdown !== null) {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "#000",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          zIndex: 9999,
+        }}
+      >
+        <style>{`
+          @keyframes countdown-pulse {
+            0% { transform: scale(0.6); opacity: 0; }
+            30% { transform: scale(1.08); opacity: 1; }
+            70% { transform: scale(1); opacity: 1; }
+            100% { transform: scale(0.9); opacity: 0; }
           }
-          count={violations}
-          onDismiss={() =>
-            setShowViolation(false)
+          @keyframes ring-expand {
+            0% { transform: scale(0.5); opacity: 0.8; }
+            100% { transform: scale(2.5); opacity: 0; }
           }
-        />
+          .countdown-number {
+            animation: countdown-pulse 1s ease-in-out forwards;
+            font-family: 'Georgia', serif;
+            font-size: clamp(120px, 22vw, 220px);
+            font-weight: 700;
+            color: #fff;
+            line-height: 1;
+            letter-spacing: -0.04em;
+          }
+          .countdown-ring {
+            position: absolute;
+            width: 260px;
+            height: 260px;
+            border: 2px solid rgba(99,102,241,0.7);
+            border-radius: 50%;
+            animation: ring-expand 1s ease-out forwards;
+          }
+          .countdown-label {
+            margin-top: 24px;
+            font-size: 13px;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            color: rgba(255,255,255,0.35);
+            font-family: system-ui, sans-serif;
+          }
+        `}</style>
+        <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div className="countdown-ring" key={`ring-${countdown}`} />
+          <span className="countdown-number" key={`num-${countdown}`}>
+            {countdown}
+          </span>
+        </div>
+        <p className="countdown-label">Preparing secure environment</p>
+      </div>
+    );
+  }
 
-      )}
+  /* RESULT SCREEN */
+
+  if (
+    showResult
+  ) {
+
+    return (
 
       <div className="
-      h-screen
+      min-h-screen
       bg-background
       flex
-      flex-col
-      overflow-hidden
+      items-center
+      justify-center
+      p-6
     ">
 
-        {/* HEADER */}
         <div className="
-        h-16
-        border-b
+        w-full
+        max-w-md
+        rounded-[36px]
+        border
         bg-card
-        px-6
-        flex
-        items-center
-        justify-between
-        shrink-0
+        p-10
+        shadow-2xl
+        text-center
+        space-y-8
       ">
 
-          {/* LEFT */}
-          <div>
+          {/* HEADER */}
+
+          <div className="
+          space-y-3
+        ">
 
             <h1 className="
-            text-lg
-            font-semibold
+            text-4xl
+            font-black
             tracking-tight
           ">
 
-              {exam?.exam_name}
+              Exam Complete!
 
             </h1>
 
             <p className="
             text-xs
+            uppercase
+            tracking-[0.3em]
             text-muted-foreground
-            mt-1
           ">
 
               {
-                exam?.subjects?.label
+                exam?.exam_name
               }
 
             </p>
 
           </div>
 
-          {/* RIGHT */}
+          {/* SCORE */}
+
           <div className="
           flex
-          items-center
-          gap-3
+          justify-center
         ">
 
-            {/* TIMER */}
             <div className="
-            px-4
-            h-10
-            rounded-xl
-            border
-            border-indigo-500/30
+            h-44
+            w-44
+            rounded-full
+            border-[10px]
+            border-indigo-500/20
+            flex
+            flex-col
+            items-center
+            justify-center
+          ">
+
+              <div className="
+              text-5xl
+              font-black
+              text-indigo-500
+            ">
+
+                {
+                  finalResult
+                    ?.totalMarks
+                }
+
+              </div>
+
+              <div className="
+              text-2xl
+              font-bold
+              text-indigo-500
+            ">
+
+                /
+                {
+                  5
+                }
+
+              </div>
+
+              <div className="
+              text-xs
+              uppercase
+              tracking-[0.2em]
+              text-muted-foreground
+              mt-2
+            ">
+
+                Grade
+
+              </div>
+
+            </div>
+
+          </div>
+
+          {/* STATS */}
+
+          <div className="
+          grid
+          grid-cols-3
+          gap-4
+        ">
+
+            <div className="
+            rounded-2xl
             bg-indigo-500/10
-            text-indigo-500
-            flex
-            items-center
-            justify-center
-            text-sm
-            font-semibold
-            min-w-[90px]
+            p-4
+            space-y-2
           ">
 
-              {
-                formatTime(timeLeft)
-              }
-
-            </div>
-
-            {/* VIOLATIONS */}
-            <div className="
-            px-4
-            h-10
-            rounded-xl
-            border
-            border-red-500/30
-            bg-red-500/10
-            text-red-500
-            flex
-            items-center
-            justify-center
-            text-sm
-            font-semibold
-          ">
-
-              Violations:
-              {" "}
-              {violations}/3
-
-            </div>
-
-          </div>
-
-        </div>
-
-        {/* BODY */}
-        <div className="
-        flex
-        flex-1
-        overflow-hidden
-      ">
-
-          {/* LEFT QUESTION PALETTE */}
-          <div className="
-          w-24
-          border-r
-          bg-card
-          p-3
-          flex
-          flex-col
-          gap-3
-          overflow-y-auto
-          shrink-0
-        ">
-
-            {questions.map(
-              (
-                question,
-                index
-              ) => (
-
-                <button
-                  key={
-                    question.id
-                  }
-                  onClick={() =>
-                    setCurrentIndex(
-                      index
-                    )
-                  }
-                  className={`
-                  h-16
-                  rounded-2xl
-                  border
-                  text-sm
-                  font-semibold
-                  transition-all
-                  cursor-pointer
-
-                  ${currentIndex ===
-                      index
-                      ? "bg-indigo-500 text-white border-indigo-500 shadow-lg shadow-indigo-500/20"
-                      : "hover:border-indigo-500/40"
-                    }
-
-                  ${question.submitted
-                      ? "bg-green-500 text-white border-green-500"
-                      : question.userAnswer
-                        ? "border-yellow-500"
-                        : ""
-                    }
-                `}
-                >
-
-                  {index + 1}
-
-                </button>
-
-              )
-            )}
-
-          </div>
-
-          {/* MAIN CONTENT */}
-          <div className="
-          flex-1
-          overflow-y-auto
-          bg-muted/30
-        ">
-
-            <div className="
-            max-w-7xl
-            mx-auto
-            p-10
-            space-y-8
-          ">
-
-              {/* QUESTION HEADER */}
               <div className="
-              flex
-              items-center
-              justify-between
+              text-2xl
+              font-black
+              text-indigo-500
             ">
 
-                <div className="
-                text-xs
-                uppercase
-                tracking-[0.2em]
-                text-indigo-500
-                font-semibold
-              ">
-
-                  Question
-                  {" "}
-                  {currentIndex + 1}
-                  {" "}
-                  of
-                  {" "}
-                  {questions.length}
-
-                </div>
-
-                <div className="
-                px-4
-                py-2
-                rounded-xl
-                border
-                bg-orange-500/10
-                border-orange-500/20
-                text-orange-500
-                text-sm
-                font-medium
-              ">
-
-                  {
-                    submittedQuestions.length
-                  }
-                  {" "}
-                  /
-                  {" "}
-                  {questions.length}
-                  {" "}
-                  Submits
-
-                </div>
+                {
+                  finalResult
+                    ?.percentage
+                }%
 
               </div>
 
-              {/* QUESTION CARD */}
               <div className="
-              rounded-3xl
-              border
-              bg-card
-              p-8
-              shadow-sm
-              space-y-8
+              text-[10px]
+              uppercase
+              tracking-[0.2em]
+              text-muted-foreground
             ">
 
-                {/* QUESTION */}
-                <div>
+                Avg Match
 
-                  <h2 className="
-                  text-2xl
-                  font-semibold
-                  leading-relaxed
-                  tracking-tight
-                ">
+              </div>
 
-                    {
-                      currentQuestion?.question
-                    }
+            </div>
 
-                  </h2>
+            <div className="
+            rounded-2xl
+            bg-indigo-500/10
+            p-4
+            space-y-2
+          ">
 
-                </div>
+              <div className="
+              text-2xl
+              font-black
+              text-indigo-500
+            ">
 
-                {/* MODULE */}
-                <div>
+                {
+                  finalResult
+                    ?.attempted
+                }/
+                {
+                  finalResult
+                    ?.totalQuestions
+                }
 
-                  <div className="
-                  inline-flex
-                  items-center
-                  rounded-full
-                  border
-                  px-4
-                  py-2
-                  text-xs
-                  font-medium
-                  bg-muted
-                ">
+              </div>
 
-                    {
-                      currentQuestion
-                        ?.modules?.label
-                    }
+              <div className="
+              text-[10px]
+              uppercase
+              tracking-[0.2em]
+              text-muted-foreground
+            ">
 
-                  </div>
+                Attempted
 
-                </div>
+              </div>
 
-                {/* ANSWER */}
-                <div className="
-                space-y-4
-              ">
+            </div>
 
-                  <div className="
-                  text-xs
-                  uppercase
-                  tracking-[0.2em]
-                  text-muted-foreground
-                  font-semibold
-                ">
+            <div className="
+            rounded-2xl
+            bg-indigo-500/10
+            p-4
+            space-y-2
+          ">
 
-                    Your Answer
+              <div className="
+              text-2xl
+              font-black
+              text-indigo-500
+            ">
 
-                  </div>
+                {
+                  finalResult
+                    ?.totalMarks
+                }
 
-                  <Textarea
-                    rows={10}
-                    placeholder="
-                  Type your answer here...
-                  "
-                    value={
-                      currentQuestion?.userAnswer
-                    }
-                    onChange={(
-                      e
-                    ) =>
-                      updateAnswer(
-                        e.target.value
-                      )
-                    }
-                    className="
-                    rounded-2xl
-                    resize-none
-                    text-base
-                    p-5
-                    border-border/60
-                    focus-visible:ring-indigo-500
-                  "
-                  />
+              </div>
 
-                </div>
+              <div className="
+              text-[10px]
+              uppercase
+              tracking-[0.2em]
+              text-muted-foreground
+            ">
 
-                {/* SUBMIT ANSWER */}
-                <div>
-
-                  <Button
-                    onClick={
-                      submitQuestion
-                    }
-                    disabled={
-                      currentQuestion
-                        ?.submitCount >= 3
-                    }
-                    className="
-                      rounded-xl
-                      bg-indigo-500
-                      hover:bg-indigo-600
-                      h-12
-                      px-8
-                      text-sm
-                      font-semibold
-                      disabled:opacity-50
-                    "
-                  >
-
-                    {
-                      currentQuestion
-                        ?.submitCount >= 3
-                        ? "Max Submits Reached"
-                        : "Submit Answer"
-                    }
-
-                  </Button>
-
-                  {currentQuestion?.submitted && (
-
-                    <div className="
-    rounded-2xl
-    border
-    p-5
-    mt-6
-    bg-muted/40
-    space-y-5
-  ">
-
-                      <div className="
-      flex
-      items-center
-      justify-between
-    ">
-
-                        <div className="
-        text-xs
-        uppercase
-        tracking-[0.2em]
-        text-muted-foreground
-        font-semibold
-      ">
-
-                          Accuracy
-
-                        </div>
-
-                        <div className="
-        text-4xl
-        font-bold
-        text-indigo-500
-      ">
-
-                          {
-                            currentQuestion
-                              ?.matchPercentage
-                          }%
-
-                        </div>
-
-                      </div>
-
-                      <div className="
-      h-3
-      rounded-full
-      bg-muted
-      overflow-hidden
-    ">
-
-                        <div
-                          className="
-          h-full
-          bg-indigo-500
-          transition-all
-        "
-                          style={{
-                            width: `${currentQuestion?.matchPercentage}%`,
-                          }}
-                        />
-
-                      </div>
-
-                      <div className="
-      flex
-      justify-between
-      text-sm
-      text-muted-foreground
-      font-medium
-    ">
-
-                        <span>
-
-                          Attempts:
-                          {" "}
-                          {
-                            currentQuestion
-                              ?.submitCount
-                          }
-                          /3
-
-                        </span>
-
-                        <span>
-
-                          Marks:
-                          {" "}
-                          {
-                            currentQuestion
-                              ?.marks
-                          }
-                          /5
-
-                        </span>
-
-                      </div>
-
-                    </div>
-
-                  )}
-
-                </div>
+                Total Marks
 
               </div>
 
@@ -1705,125 +1081,252 @@ export default function ExamPage() {
 
           </div>
 
-        </div>
+          {/* SUCCESS */}
 
-        {/* FOOTER */}
-        <div className="
-        h-20
-        border-t
-        bg-card
-        px-8
-        flex
-        items-center
-        justify-between
-        shrink-0
-      ">
-
-          {/* PREVIOUS */}
-          <Button
-            variant="outline"
-            className="
-            rounded-xl
-            h-12
-            px-6
-          "
-            disabled={
-              currentIndex === 0
-            }
-            onClick={() =>
-              setCurrentIndex(
-                currentIndex - 1
-              )
-            }
-          >
-
-            ← Prev
-
-          </Button>
-
-          {/* ATTEMPTED */}
           <div className="
-          text-sm
-          text-muted-foreground
+          rounded-2xl
+          border
+          border-green-500/30
+          bg-green-500/10
+          px-4
+          py-3
+          text-green-500
           font-medium
         ">
 
-            <span className="
-            text-indigo-500
+            Result saved successfully
+
+          </div>
+
+          {/* BUTTON */}
+
+          <Button
+            onClick={() => {
+
+              window.location.href =
+                "/dashboard/analysis";
+
+            }}
+            className="
+            w-full
+            h-14
+            rounded-2xl
+            bg-indigo-500
+            hover:bg-indigo-600
+            text-base
             font-semibold
-          ">
+          "
+          >
 
-              {
-                submittedQuestions.length
-              }
+            ← Back to Dashboard
 
-            </span>
-
-            {" "}
-            /
-            {" "}
-            {questions.length}
-
-            {" "}
-            Attempted
-
-          </div>
-
-          {/* RIGHT BUTTONS */}
-          <div className="
-          flex
-          items-center
-          gap-3
-        ">
-
-            <Button
-              variant="outline"
-              className="
-              rounded-xl
-              h-12
-              px-6
-            "
-              disabled={
-                currentIndex ===
-                questions.length - 1
-              }
-              onClick={() =>
-                setCurrentIndex(
-                  currentIndex + 1
-                )
-              }
-            >
-
-              Next →
-
-            </Button>
-
-            <Button
-              onClick={
-                handleSubmit
-              }
-              className="
-              rounded-xl
-              bg-indigo-500
-              hover:bg-indigo-600
-              h-12
-              px-8
-              font-semibold
-            "
-            >
-
-              END EXAM
-
-            </Button>
-
-          </div>
+          </Button>
 
         </div>
 
       </div>
 
+    );
+
+  }
+
+  const currentQuestion = questions[currentIndex];
+
+  return (
+    <>
+      {/* VIOLATION MODAL */}
+      {showViolation && (
+        <ViolationModal
+          title="Violation Detected"
+          message={violationReason.current}
+          count={violations}
+          onDismiss={
+            continueExam
+          }
+        />
+      )}
+
+      <div className="h-screen bg-background flex flex-col overflow-hidden">
+        {/* HEADER */}
+        <div className="h-16 border-b bg-card px-6 flex items-center justify-between shrink-0">
+          {/* LEFT */}
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight">{exam?.exam_name}</h1>
+            <p className="text-xs text-muted-foreground mt-1">{exam?.subjects?.label}</p>
+          </div>
+
+          {/* RIGHT */}
+          <div className="flex items-center gap-3">
+            {/* TIMER */}
+            <div className="px-4 h-10 rounded-xl border border-indigo-500/30 bg-indigo-500/10 text-indigo-500 flex items-center justify-center text-sm font-semibold min-w-[90px]">
+              {formatTime(timeLeft)}
+            </div>
+
+            {/* VIOLATIONS */}
+            <div className="px-4 h-10 rounded-xl border border-red-500/30 bg-red-500/10 text-red-500 flex items-center justify-center text-sm font-semibold">
+              Violations: {violations}/3
+            </div>
+          </div>
+        </div>
+
+        {/* BODY */}
+        <div className="flex flex-1 overflow-hidden">
+          {/* LEFT QUESTION PALETTE */}
+          <div className="w-24 border-r bg-card p-3 flex flex-col gap-3 overflow-y-auto shrink-0">
+            {questions.map((question, index) => (
+              <button
+                key={question.id}
+                onClick={() => setCurrentIndex(index)}
+                className={`
+                  h-16 rounded-2xl border text-sm font-semibold transition-all cursor-pointer
+                  ${currentIndex === index
+                    ? "bg-indigo-500 text-white border-indigo-500 shadow-lg shadow-indigo-500/20"
+                    : "hover:border-indigo-500/40"}
+                  ${question.submitted
+                    ? "bg-green-500 text-white border-green-500"
+                    : question.userAnswer
+                      ? "border-yellow-500"
+                      : ""}
+                `}
+              >
+                {index + 1}
+              </button>
+            ))}
+          </div>
+
+          {/* MAIN CONTENT */}
+          <div className="flex-1 overflow-y-auto bg-muted/30">
+            <div className="max-w-7xl mx-auto p-10 space-y-8">
+              {/* QUESTION HEADER */}
+              <div className="flex items-center justify-between">
+                <div className="text-xs uppercase tracking-[0.2em] text-indigo-500 font-semibold">
+                  Question {currentIndex + 1} of {questions.length}
+                </div>
+                <div className="px-4 py-2 rounded-xl border bg-orange-500/10 border-orange-500/20 text-orange-500 text-sm font-medium">
+                  {submittedQuestions.length} / {questions.length} Attempted
+                </div>
+              </div>
+
+              {/* QUESTION CARD */}
+              <div className="rounded-3xl border bg-card p-8 shadow-sm space-y-8">
+                {/* QUESTION */}
+                <div>
+                  <h2 className="text-2xl font-semibold leading-relaxed tracking-tight"
+                    style={{
+                      fontSize: "25px",
+                      lineHeight: "1.0",
+                      fontWeight: "200",
+                    }}
+                  >
+                    {currentQuestion?.question}
+                  </h2>
+                </div>
+
+                {/* MODULE */}
+                <div>
+                  <div className="inline-flex items-center rounded-full border px-4 py-2 text-xs font-medium bg-muted">
+                    {currentQuestion?.modules?.label}
+                  </div>
+                </div>
+
+                {/* ANSWER */}
+                <div className="space-y-4">
+                  <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">
+                    Your Answer
+                  </div>
+                  <Textarea
+                    rows={10}
+                    placeholder="Type your answer here..."
+                    value={currentQuestion?.userAnswer}
+                    onChange={(e) => updateAnswer(e.target.value)}
+                    style={{
+                      fontSize: "20px",
+                      lineHeight: "1.0",
+                      fontWeight: "200",
+                    }}
+                    className="
+                      rounded-2xl
+                      resize-none
+                      text-2xl
+                      leading-relaxed
+                      p-5
+                      border-border/60
+                      focus-visible:ring-indigo-500
+                      min-h-[200px]
+                    "
+                  />
+                </div>
+
+                {/* SUBMIT ANSWER */}
+                <div>
+                  <Button
+                    onClick={submitQuestion}
+                    disabled={currentQuestion?.submitCount >= 3}
+                    className="rounded-xl bg-indigo-500 hover:bg-indigo-600 h-12 px-8 text-sm font-semibold disabled:opacity-50"
+                  >
+                    {currentQuestion?.submitCount >= 3 ? "Max Submits Reached" : "Submit Answer"}
+                  </Button>
+
+                  {currentQuestion?.submitted && (
+                    <div className="rounded-2xl border p-5 mt-6 bg-muted/40 space-y-5">
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-semibold">
+                          Accuracy
+                        </div>
+                        <div className="text-4xl font-bold text-indigo-500">
+                          {currentQuestion?.matchPercentage}%
+                        </div>
+                      </div>
+
+                      <div className="h-3 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className="h-full bg-indigo-500 transition-all"
+                          style={{ width: `${currentQuestion?.matchPercentage}%` }}
+                        />
+                      </div>
+
+                      <div className="flex justify-between text-sm text-muted-foreground font-medium">
+                        <span>Attempts: {currentQuestion?.submitCount}/3</span>
+                        <span>Marks: {currentQuestion?.marks}/5</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* FOOTER */}
+        <div className="h-20 border-t bg-card px-8 flex items-center justify-between shrink-0">
+          <Button
+            variant="outline"
+            className="rounded-xl h-12 px-6"
+            disabled={currentIndex === 0}
+            onClick={() => setCurrentIndex(currentIndex - 1)}
+          >
+            ← Prev
+          </Button>
+
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              className="rounded-xl h-12 px-6"
+              disabled={currentIndex === questions.length - 1}
+              onClick={() => setCurrentIndex(currentIndex + 1)}
+            >
+              Next →
+            </Button>
+
+            <Button
+              onClick={handleSubmit}
+              className="rounded-xl bg-indigo-500 hover:bg-indigo-600 h-12 px-8 font-semibold"
+            >
+              END EXAM
+            </Button>
+          </div>
+        </div>
+      </div>
     </>
-
   );
-
-}
+} 

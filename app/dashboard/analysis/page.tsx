@@ -387,7 +387,13 @@ export default function AnalysisPage() {
 
                       <Badge
                         variant="secondary"
-                        className="rounded-md"
+                        className="
+                          rounded-xl
+                          px-5
+                          py-2
+                          text-base
+                          font-semibold
+                        "
                       >
 
                         Score:{" "}
@@ -397,31 +403,6 @@ export default function AnalysisPage() {
 
                       </Badge>
 
-                      <Badge
-                        variant="outline"
-                        className="rounded-md"
-                      >
-
-                        Grade:{" "}
-                        {
-                          result.final_grade
-                        }
-
-                      </Badge>
-
-                      <Badge
-                        className="
-                          rounded-md
-                          bg-indigo-500
-                          hover:bg-indigo-500
-                        "
-                      >
-
-                        {
-                          result.avg_match_pct
-                        }%
-
-                      </Badge>
 
                     </div>
 
